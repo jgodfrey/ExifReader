@@ -9,16 +9,24 @@ var _file
 
 # Called when the node enters the scene tree for the first time.
 func _ready():
-	var file = "c:/users/jeff/desktop/2019-01-22_110256.jpg"
-	var time1 = OS.get_system_time_msecs()
-	var exif_section = get_exif_section(file)
-	if exif_section.size() > 0:
-		parse_exif_section(exif_section)
-	var time2 = OS.get_system_time_msecs()
-	print("%d, %d, %d" % [time1, time2, time2 - time1])
+	var files = get_files_recursive('r:/Pictures/ON1')
+	for file in files:
+		print('---------------------')
+		print(file)
+		#var file = "c:/users/jeff/desktop/2019-01-22_110256.jpg"
+		file = 'r:/Pictures/ON1/2008-07-08_20-44-58-70.jpg'
+		var time1 = OS.get_system_time_msecs()
+		var exif_section = get_exif_section(file)
+		var exif = {}
+		if exif_section.size() > 0:
+			exif = parse_exif_section(exif_section)
+		var time2 = OS.get_system_time_msecs()
+		print("%d, %d, %d" % [time1, time2, time2 - time1])
+		print(exif)
+		break
 
 var _tiff_header
-func parse_exif_section(exif_section):
+func parse_exif_section(exif_section: PoolByteArray) -> Dictionary:
 	var results = {}
 	var stream = StreamPeerBuffer.new()
 	stream.data_array = exif_section
@@ -30,9 +38,12 @@ func parse_exif_section(exif_section):
 	var signature = stream.get_u16()
 	var ifd_offset = stream.get_u32() # <-----
 	var ifd0 = read_tags(stream, _tiff_header + ifd_offset, exif_tags)
-	results["exif"] = read_tags(stream, _tiff_header + ifd0["ExifOffset"], exif_tags)
-	results["gps"] = read_tags(stream, _tiff_header + ifd0["GPSInfo"], gps_tags)
-	print(results)
+
+	if ifd0.has('ExifOffset') && ifd0['ExifOffset'] > 0:
+		results['exif'] = read_tags(stream, _tiff_header + ifd0['ExifOffset'], exif_tags)
+	if ifd0.has('GPSInfo') && ifd0['GPSInfo'] > 0:
+		results['gps'] = read_tags(stream, _tiff_header + ifd0['GPSInfo'], gps_tags)
+	return results
 
 func read_tags(stream: StreamPeerBuffer, offset: int, tags_collection: Dictionary) -> Dictionary:
 	var tags = {}
@@ -45,6 +56,8 @@ func read_tags(stream: StreamPeerBuffer, offset: int, tags_collection: Dictionar
 		var tag = stream.get_u16()
 		var type = stream.get_u16()
 		var num_vals = stream.get_u32()
+		if tags_collection.has(tag) && tags_collection[tag] == 'UserComment':
+			print("%d, %d, %d" % [tag, type, num_vals])
 		var value_size = SIZE_LOOKUP[type - 1];
 		var value_offset = 0 if value_size * num_vals <= 4 else stream.get_u32()
 
@@ -58,14 +71,21 @@ func read_tags(stream: StreamPeerBuffer, offset: int, tags_collection: Dictionar
 		if type == 2:
 			value = stream.get_string(num_vals * value_size)
 		elif type == 7:
-			value = stream.get_partial_data(num_vals * value_size)
+			if tags_collection.has(tag) && tags_collection[tag] == 'UserComment':
+				stream.get_string(8) # type (ASCII,  JIS, Unicode, or Undefined)
+				value = stream.get_string(num_vals * value_size - 8).strip_edges()
+			else:
+				value = stream.get_partial_data(num_vals * value_size)
 		else:
 			var vals = []
 			for v in range(num_vals):
 				vals.append(read_value(stream, value_offset, type))
-			value = vals if num_vals > 1 else vals[0]
+				value = vals if num_vals > 1 else vals[0]
 
-		tags[tags_collection[tag]] = value
+		if tags_collection.has(tag):
+			tags[tags_collection[tag]] = value
+		else:
+			tags[tag] = value
 
 		# clean up the end of any unused portion of the current tag if necessary
 		if value_offset == 0:
@@ -105,6 +125,30 @@ func get_exif_section(imageFile: String) -> PoolByteArray:
 			file.seek(file.get_position() + buf_len)
 
 	return exif_section
+
+func get_files_recursive(scan_dir : String) -> Array:
+	var my_files : Array = []
+	var dir := Directory.new()
+	if dir.open(scan_dir) != OK:
+		printerr("Warning: could not open directory: ", scan_dir)
+		return []
+
+	if dir.list_dir_begin(true, true) != OK:
+		printerr("Warning: could not list contents of: ", scan_dir)
+		return []
+
+	var file_name := dir.get_next()
+	while file_name != "":
+		if dir.current_is_dir():
+			my_files += get_files_recursive(dir.get_current_dir() + "/" + file_name)
+		else:
+			my_files.append(dir.get_current_dir() + "/" + file_name)
+
+		file_name = dir.get_next()
+
+	randomize()
+	my_files.shuffle()
+	return my_files
 
 const exif_tags = {
   0x0001: 'InteropIndex',
