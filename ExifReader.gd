@@ -4,17 +4,18 @@ const FILE_START_MARKER = PoolByteArray([0xff, 0xd8])
 const IMAGE_START_MARKER = PoolByteArray([0xff, 0xda])
 const EXIF_MARKER = PoolByteArray([0xff, 0xe1])
 
-var _file
+const SIZE_LOOKUP = [1, 1, 2, 4, 8, 1, 1, 2, 4, 8]
+var _tiff_header
 
 
 # Called when the node enters the scene tree for the first time.
 func _ready():
-	var files = get_files_recursive('r:/Pictures/ON1')
+	var files = get_files_recursive('C:/Users/Jeff/Desktop/ON1')
 	for file in files:
 		print('---------------------')
 		print(file)
 		#var file = "c:/users/jeff/desktop/2019-01-22_110256.jpg"
-		file = 'r:/Pictures/ON1/2008-07-08_20-44-58-70.jpg'
+		#file = 'r:/Pictures/ON1/2008-07-08_20-44-58-70.jpg'
 		var time1 = OS.get_system_time_msecs()
 		var exif_section = get_exif_section(file)
 		var exif = {}
@@ -23,9 +24,8 @@ func _ready():
 		var time2 = OS.get_system_time_msecs()
 		print("%d, %d, %d" % [time1, time2, time2 - time1])
 		print(exif)
-		break
+		#break
 
-var _tiff_header
 func parse_exif_section(exif_section: PoolByteArray) -> Dictionary:
 	var results = {}
 	var stream = StreamPeerBuffer.new()
@@ -47,7 +47,6 @@ func parse_exif_section(exif_section: PoolByteArray) -> Dictionary:
 
 func read_tags(stream: StreamPeerBuffer, offset: int, tags_collection: Dictionary) -> Dictionary:
 	var tags = {}
-	var SIZE_LOOKUP = [1, 1, 2, 4, 8, 1, 1, 2, 4, 8]
 	# seek the ifd as "tiff_header + offset"
 	stream.seek(offset)
 
@@ -56,13 +55,13 @@ func read_tags(stream: StreamPeerBuffer, offset: int, tags_collection: Dictionar
 		var tag = stream.get_u16()
 		var type = stream.get_u16()
 		var num_vals = stream.get_u32()
-		if tags_collection.has(tag) && tags_collection[tag] == 'UserComment':
-			print("%d, %d, %d" % [tag, type, num_vals])
 		var value_size = SIZE_LOOKUP[type - 1];
 		var value_offset = 0 if value_size * num_vals <= 4 else stream.get_u32()
 
-		var curr_pos = 0
+		var curr_pos = -1
 
+		# if we have an offset for this value, remember this location so we can
+		# return to it, then seek to the new offset (always from "tiff_header")
 		if value_offset != 0:
 			curr_pos = stream.get_position()
 			stream.seek(_tiff_header + value_offset)
@@ -80,19 +79,21 @@ func read_tags(stream: StreamPeerBuffer, offset: int, tags_collection: Dictionar
 			var vals = []
 			for v in range(num_vals):
 				vals.append(read_value(stream, value_offset, type))
-				value = vals if num_vals > 1 else vals[0]
+			value = vals if num_vals > 1 else vals[0]
 
 		if tags_collection.has(tag):
 			tags[tags_collection[tag]] = value
 		else:
 			tags[tag] = value
 
-		# clean up the end of any unused portion of the current tag if necessary
+		# special case - move past any unused (null-padded) bytes in this value
 		if value_offset == 0:
 			var extra_bytes = 4 - (num_vals * value_size)
-			stream.get_partial_data(extra_bytes)
+			stream.seek(stream.get_position() + extra_bytes)
 
-		if curr_pos > 0: stream.seek(curr_pos)
+		# if we had to offet the buffer pointer to access the current value,
+		# reset it to the stored location to continue normal parsing
+		if curr_pos != -1: stream.seek(curr_pos)
 
 	return tags
 
@@ -102,11 +103,11 @@ func read_value(stream: StreamPeerBuffer, value_offset: int, type: int):
 		1: return stream.get_u8()
 		3: return stream.get_u16()
 		4: return stream.get_u32()
-		5: return stream.get_u32() / stream.get_u32()
+		5: return float(stream.get_u32()) / stream.get_u32()
 		6: return stream.get_8()
 		8: return stream.get_16()
 		9: return stream.get_32()
-		10: return stream.get_32() / stream.get_32()
+		10: return float(stream.get_32()) / stream.get_32()
 
 func get_exif_section(imageFile: String) -> PoolByteArray:
 	var exif_section = PoolByteArray([])
