@@ -10,7 +10,7 @@ var _tiff_header
 
 # Called when the node enters the scene tree for the first time.
 func _ready():
-	var files = get_files_recursive('C:/Users/Jeff/Desktop/ON1')
+	var files = get_files_recursive('//nas1/media/Picture Frame Pics/ON1')
 	for file in files:
 		print('---------------------')
 		print(file)
@@ -23,7 +23,7 @@ func _ready():
 			exif = parse_exif_section(exif_section)
 		var time2 = OS.get_system_time_msecs()
 		print("%d, %d, %d" % [time1, time2, time2 - time1])
-		print(exif)
+		#print(exif)
 		#break
 
 func parse_exif_section(exif_section: PoolByteArray) -> Dictionary:
@@ -38,6 +38,7 @@ func parse_exif_section(exif_section: PoolByteArray) -> Dictionary:
 	var signature = stream.get_u16()
 	var ifd_offset = stream.get_u32() # <-----
 	var ifd0 = read_tags(stream, _tiff_header + ifd_offset, exif_tags)
+	print(ifd0)
 
 	if ifd0.has('ExifOffset') && ifd0['ExifOffset'] > 0:
 		results['exif'] = read_tags(stream, _tiff_header + ifd0['ExifOffset'], exif_tags)
@@ -68,12 +69,13 @@ func read_tags(stream: StreamPeerBuffer, offset: int, tags_collection: Dictionar
 
 		var value = null
 		if type == 2:
-			value = stream.get_string(num_vals * value_size)
+			value = stream.get_string(num_vals * value_size).strip_edges()
 		elif type == 7:
-			if tags_collection.has(tag) && tags_collection[tag] == 'UserComment':
-				stream.get_string(8) # type (ASCII,  JIS, Unicode, or Undefined)
+			var t = stream.get_string(8) # type (ASCII,  JIS, Unicode, or Undefined)
+			if t == 'ASCII':
 				value = stream.get_string(num_vals * value_size - 8).strip_edges()
 			else:
+				stream.seek(stream.get_position() - 8)
 				value = stream.get_partial_data(num_vals * value_size)
 		else:
 			var vals = []
