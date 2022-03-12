@@ -55,50 +55,54 @@ func read_tags(stream: StreamPeerBuffer, offset: int, tags_collection: Dictionar
 	var num_entries = stream.get_u16()
 	for i in range(num_entries):
 		var tag = stream.get_u16()
-		var type = stream.get_u16()
-		var num_vals = stream.get_u32()
-		var value_size = SIZE_LOOKUP[type - 1];
-		var value_offset = 0 if value_size * num_vals <= 4 else stream.get_u32()
-
-		var curr_pos = -1
-
-		# if we have an offset for this value, remember this location so we can
-		# return to it, then seek to the new offset (always from "tiff_header")
-		if value_offset != 0:
-			curr_pos = stream.get_position()
-			stream.seek(_tiff_header + value_offset)
-
-		var value = null
-		if type == 2:
-			value = stream.get_string(num_vals * value_size).strip_edges()
-		elif type == 7:
-			var t = stream.get_string(8) # type (ASCII,  JIS, Unicode, or Undefined)
-			if t == 'ASCII':
-				value = stream.get_string(num_vals * value_size - 8).strip_edges()
-			else:
-				stream.seek(stream.get_position() - 8)
-				value = stream.get_partial_data(num_vals * value_size)
-		else:
-			var vals = []
-			for v in range(num_vals):
-				vals.append(read_value(stream, value_offset, type))
-			value = vals if num_vals > 1 else vals[0]
+		var value = read_tag(stream)
 
 		if tags_collection.has(tag):
 			tags[tags_collection[tag]] = value
 		else:
 			tags[tag] = value
 
-		# special case - move past any unused (null-padded) bytes in this value
-		if value_offset == 0:
-			var extra_bytes = 4 - (num_vals * value_size)
-			stream.seek(stream.get_position() + extra_bytes)
-
-		# if we had to offet the buffer pointer to access the current value,
-		# reset it to the stored location to continue normal parsing
-		if curr_pos != -1: stream.seek(curr_pos)
-
 	return tags
+
+func read_tag(stream: StreamPeerBuffer):
+	var type = stream.get_u16()
+	var num_vals = stream.get_u32()
+	var value_size = SIZE_LOOKUP[type - 1];
+	var value_offset = 0 if value_size * num_vals <= 4 else stream.get_u32()
+	var stream_loc = -1
+
+	# if we have an offset for this value, remember this location so we can
+	# return to it, then seek to the new offset (always from "tiff_header")
+	if value_offset != 0:
+		stream_loc = stream.get_position()
+		stream.seek(_tiff_header + value_offset)
+
+	var value = null
+	if type == 2:
+		value = stream.get_string(num_vals * value_size).strip_edges()
+	elif type == 7:
+		var t = stream.get_string(8) # type (ASCII,  JIS, Unicode, or Undefined)
+		if t == 'ASCII':
+			value = stream.get_string(num_vals * value_size - 8).strip_edges()
+		else:
+			stream.seek(stream.get_position() - 8)
+			value = stream.get_partial_data(num_vals * value_size)
+	else:
+		var vals = []
+		for v in range(num_vals):
+			vals.append(read_value(stream, value_offset, type))
+		value = vals if num_vals > 1 else vals[0]
+
+	# special case - move past any unused (null-padded) bytes in this value
+	if value_offset == 0:
+		var extra_bytes = 4 - (num_vals * value_size)
+		stream.seek(stream.get_position() + extra_bytes)
+
+	# if we had to offet the stream pointer to access the current value,
+	# reset it to the stored location prior to returning
+	if stream_loc != -1: stream.seek(stream_loc)
+
+	return value
 
 func read_value(stream: StreamPeerBuffer, value_offset: int, type: int):
 	#if value_offset != 0: stream.seek(stream.get_position() + value_offset)
