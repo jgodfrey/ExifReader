@@ -5,7 +5,6 @@ const IMAGE_START_MARKER = PoolByteArray([0xff, 0xda])
 const EXIF_MARKER = PoolByteArray([0xff, 0xe1])
 
 const SIZE_LOOKUP = [1, 1, 2, 4, 8, 1, 1, 2, 4, 8]
-var _tiff_header
 
 
 # Called when the node enters the scene tree for the first time.
@@ -17,45 +16,44 @@ func _ready():
 		#var file = "c:/users/jeff/desktop/2019-01-22_110256.jpg"
 		#file = 'r:/Pictures/ON1/2008-07-08_20-44-58-70.jpg'
 		var time1 = OS.get_system_time_msecs()
-		var exif_section = get_exif_section(file)
+		var exif_section = get_exif_from_jpeg(file)
 		var exif = {}
 		if exif_section.size() > 0:
-			exif = parse_exif_section(exif_section)
+			exif = parse_exif_data(exif_section)
 		var time2 = OS.get_system_time_msecs()
 		print("%d, %d, %d" % [time1, time2, time2 - time1])
 		print(exif)
-		break
+		#break
 
-func parse_exif_section(exif_section: PoolByteArray) -> Dictionary:
+func parse_exif_data(exif_section: PoolByteArray) -> Dictionary:
 	var results = {}
 	var stream = StreamPeerBuffer.new()
 	stream.data_array = exif_section
 	var sect = stream.get_string(4)
 	var nulls = stream.get_u16()
-	_tiff_header = stream.get_position()
+	var tiff_header = stream.get_position()
 	var endian = stream.get_string(2)
 	stream.big_endian = endian != "II"
 	var signature = stream.get_u16()
 	var ifd_offset = stream.get_u32() # <-----
-	var ifd0 = read_tags(stream, _tiff_header + ifd_offset, Globals.exif_tags)
-	print(ifd0)
+	var ifd0 = read_tags(stream, tiff_header, ifd_offset, Globals.exif_tags)
 
 	if ifd0.has('ExifOffset') && ifd0['ExifOffset'] > 0:
-		results['exif'] = read_tags(stream, _tiff_header + ifd0['ExifOffset'],
+		results['exif'] = read_tags(stream, tiff_header, ifd0['ExifOffset'],
 		Globals.exif_tags)
 	if ifd0.has('GPSInfo') && ifd0['GPSInfo'] > 0:
-		results['gps'] = read_tags(stream, _tiff_header + ifd0['GPSInfo'], Globals.gps_tags)
+		results['gps'] = read_tags(stream, tiff_header, ifd0['GPSInfo'], Globals.gps_tags)
 	return results
 
-func read_tags(stream: StreamPeerBuffer, offset: int, tags_collection: Dictionary) -> Dictionary:
+func read_tags(stream: StreamPeerBuffer, tiff_header: int, offset: int, tags_collection: Dictionary) -> Dictionary:
 	var tags = {}
 	# seek the ifd as "tiff_header + offset"
-	stream.seek(offset)
+	stream.seek(tiff_header + offset)
 
 	var num_entries = stream.get_u16()
 	for i in range(num_entries):
 		var tag = stream.get_u16()
-		var value = read_tag(stream)
+		var value = read_tag(stream, tiff_header)
 
 		if tags_collection.has(tag):
 			tags[tags_collection[tag]] = value
@@ -64,7 +62,7 @@ func read_tags(stream: StreamPeerBuffer, offset: int, tags_collection: Dictionar
 
 	return tags
 
-func read_tag(stream: StreamPeerBuffer):
+func read_tag(stream: StreamPeerBuffer, tiff_header: int):
 	var type = stream.get_u16()
 	var num_vals = stream.get_u32()
 	var value_size = SIZE_LOOKUP[type - 1];
@@ -75,7 +73,7 @@ func read_tag(stream: StreamPeerBuffer):
 	# return to it, then seek to the new offset (always from "tiff_header")
 	if value_offset != 0:
 		stream_loc = stream.get_position()
-		stream.seek(_tiff_header + value_offset)
+		stream.seek(tiff_header + value_offset)
 
 	var value = null
 	if type == 2:
@@ -116,7 +114,7 @@ func read_value(stream: StreamPeerBuffer, value_offset: int, type: int):
 		9: return stream.get_32()
 		10: return float(stream.get_32()) / stream.get_32()
 
-func get_exif_section(imageFile: String) -> PoolByteArray:
+func get_exif_from_jpeg(imageFile: String) -> PoolByteArray:
 	var exif_section = PoolByteArray([])
 	var file = File.new()
 	file.open(imageFile, File.READ)
