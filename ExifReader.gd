@@ -6,26 +6,27 @@ const EXIF_MARKER = PoolByteArray([0xff, 0xe1])
 
 const SIZE_LOOKUP = [1, 1, 2, 4, 8, 1, 1, 2, 4, 8]
 
-
 # Called when the node enters the scene tree for the first time.
 func _ready():
 	var files = get_files_recursive('//nas1/media/Picture Frame Pics/ON1')
 	for file in files:
 		print('---------------------')
 		print(file)
-		#var file = "c:/users/jeff/desktop/2019-01-22_110256.jpg"
-		#file = 'r:/Pictures/ON1/2008-07-08_20-44-58-70.jpg'
 		var time1 = OS.get_system_time_msecs()
-		var exif_section = get_exif_from_jpeg(file)
-		var exif = {}
-		if exif_section.size() > 0:
-			exif = parse_exif_data(exif_section)
+		var exif = get_exif_from_jpeg(file)
 		var time2 = OS.get_system_time_msecs()
 		print("%d, %d, %d" % [time1, time2, time2 - time1])
 		print(exif)
-		#break
+		break
 
-func parse_exif_data(exif_section: PoolByteArray) -> Dictionary:
+func get_exif_from_jpeg(jpeg_file: String) -> Dictionary:
+		var exif_section = _get_exif_buffer_from_jpeg(jpeg_file)
+		var exif = {}
+		if exif_section.size() > 0:
+			exif = _parse_exif_buffer(exif_section)
+		return exif
+
+func _parse_exif_buffer(exif_section: PoolByteArray) -> Dictionary:
 	var results = {}
 	var stream = StreamPeerBuffer.new()
 	stream.data_array = exif_section
@@ -36,16 +37,16 @@ func parse_exif_data(exif_section: PoolByteArray) -> Dictionary:
 	stream.big_endian = endian != "II"
 	var signature = stream.get_u16()
 	var ifd_offset = stream.get_u32() # <-----
-	var ifd0 = read_tags(stream, tiff_header, ifd_offset, Globals.exif_tags)
+	var ifd0 = _read_exif_tags(stream, tiff_header, ifd_offset, Globals.exif_tags)
 
 	if ifd0.has('ExifOffset') && ifd0['ExifOffset'] > 0:
-		results['exif'] = read_tags(stream, tiff_header, ifd0['ExifOffset'],
+		results['exif'] = _read_exif_tags(stream, tiff_header, ifd0['ExifOffset'],
 		Globals.exif_tags)
 	if ifd0.has('GPSInfo') && ifd0['GPSInfo'] > 0:
-		results['gps'] = read_tags(stream, tiff_header, ifd0['GPSInfo'], Globals.gps_tags)
+		results['gps'] = _read_exif_tags(stream, tiff_header, ifd0['GPSInfo'], Globals.gps_tags)
 	return results
 
-func read_tags(stream: StreamPeerBuffer, tiff_header: int, offset: int, tags_collection: Dictionary) -> Dictionary:
+func _read_exif_tags(stream: StreamPeerBuffer, tiff_header: int, offset: int, tags_collection: Dictionary) -> Dictionary:
 	var tags = {}
 	# seek the ifd as "tiff_header + offset"
 	stream.seek(tiff_header + offset)
@@ -53,7 +54,7 @@ func read_tags(stream: StreamPeerBuffer, tiff_header: int, offset: int, tags_col
 	var num_entries = stream.get_u16()
 	for i in range(num_entries):
 		var tag = stream.get_u16()
-		var value = read_tag(stream, tiff_header)
+		var value = _read_exif_tag(stream, tiff_header)
 
 		if tags_collection.has(tag):
 			tags[tags_collection[tag]] = value
@@ -62,7 +63,7 @@ func read_tags(stream: StreamPeerBuffer, tiff_header: int, offset: int, tags_col
 
 	return tags
 
-func read_tag(stream: StreamPeerBuffer, tiff_header: int):
+func _read_exif_tag(stream: StreamPeerBuffer, tiff_header: int):
 	var type = stream.get_u16()
 	var num_vals = stream.get_u32()
 	var value_size = SIZE_LOOKUP[type - 1];
@@ -88,7 +89,7 @@ func read_tag(stream: StreamPeerBuffer, tiff_header: int):
 	else:
 		var vals = []
 		for v in range(num_vals):
-			vals.append(read_value(stream, value_offset, type))
+			vals.append(_read_exif_value(stream, type))
 		value = vals if num_vals > 1 else vals[0]
 
 	# special case - move past any unused (null-padded) bytes in this value
@@ -102,19 +103,20 @@ func read_tag(stream: StreamPeerBuffer, tiff_header: int):
 
 	return value
 
-func read_value(stream: StreamPeerBuffer, value_offset: int, type: int):
-	#if value_offset != 0: stream.seek(stream.get_position() + value_offset)
+func _read_exif_value(stream: StreamPeerBuffer, type: int):
 	match(type):
-		1: return stream.get_u8()
-		3: return stream.get_u16()
-		4: return stream.get_u32()
-		5: return float(stream.get_u32()) / stream.get_u32()
+		1: return stream.get_u8()  # 8-bit unsigned int
+		3: return stream.get_u16() # 16-bit unsigned int
+		4: return stream.get_u32() # 32-bit unsigned int
+		5: # rational = two unsigned long values, first is numerator, second is denominator
+			return float(stream.get_u32()) / stream.get_u32()
 		6: return stream.get_8()
 		8: return stream.get_16()
 		9: return stream.get_32()
-		10: return float(stream.get_32()) / stream.get_32()
+		10: # rational = two signed long values, first is numerator, second is denominator
+			return float(stream.get_32()) / stream.get_32()
 
-func get_exif_from_jpeg(imageFile: String) -> PoolByteArray:
+func _get_exif_buffer_from_jpeg(imageFile: String) -> PoolByteArray:
 	var exif_section = PoolByteArray([])
 	var file = File.new()
 	file.open(imageFile, File.READ)
