@@ -38,6 +38,8 @@ func _parse_exif_buffer(exif_section: PoolByteArray) -> Dictionary:
 	var signature = stream.get_u16()
 	var ifd_offset = stream.get_u32() # <-----
 	var ifd0 = _read_exif_tags(stream, tiff_header, ifd_offset, Globals.exif_tags)
+	print(ifd0)
+	results['image'] = ifd0
 
 	if ifd0.has('ExifOffset') && ifd0['ExifOffset'] > 0:
 		results['exif'] = _read_exif_tags(stream, tiff_header, ifd0['ExifOffset'],
@@ -109,12 +111,18 @@ func _read_exif_value(stream: StreamPeerBuffer, type: int):
 		3: return stream.get_u16() # 16-bit unsigned int
 		4: return stream.get_u32() # 32-bit unsigned int
 		5: # rational = two unsigned long values, first is numerator, second is denominator
-			return float(stream.get_u32()) / stream.get_u32()
+			var num = stream.get_u32()
+			var den = stream.get_u32()
+			if den == 0: den = 1
+			return float(num) / den
 		6: return stream.get_8()
 		8: return stream.get_16()
 		9: return stream.get_32()
 		10: # rational = two signed long values, first is numerator, second is denominator
-			return float(stream.get_32()) / stream.get_32()
+			var num = stream.get_32()
+			var den = stream.get_32()
+			if den == 0: den = 1
+			return float(num) / den
 
 func _get_exif_buffer_from_jpeg(imageFile: String) -> PoolByteArray:
 	var exif_section = PoolByteArray([])
