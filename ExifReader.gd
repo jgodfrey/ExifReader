@@ -16,8 +16,8 @@ func _ready():
 		var exif = get_exif_from_jpeg(file)
 		var time2 = OS.get_system_time_msecs()
 		print("%d, %d, %d" % [time1, time2, time2 - time1])
-		print(exif)
-		break
+		pretty_print_exif(exif)
+		#break
 
 func get_exif_from_jpeg(jpeg_file: String) -> Dictionary:
 		var exif_section = _get_exif_buffer_from_jpeg(jpeg_file)
@@ -141,6 +141,22 @@ func _get_exif_buffer_from_jpeg(imageFile: String) -> PoolByteArray:
 			file.seek(file.get_position() + buf_len)
 
 	return exif_section
+
+func pretty_print_exif(dict: Dictionary) -> void:
+		var keys = dict.keys()
+		keys.sort()
+		for key in keys:
+			if dict[key] is Dictionary:
+				print("**** %s ****" % key)
+				pretty_print_exif(dict[key])
+			else:
+				print("   %s: %s" % [key, dict[key]])
+
+func convert_raw_gps_coord(degrees: float, minutes: float, seconds: float, direction: String) -> float:
+		var d = degrees + (minutes / 60) + (seconds / 3600)
+		if direction =='W' || direction == 'S':
+			d *= -1
+		return d
 
 func get_files_recursive(scan_dir : String) -> Array:
 	var my_files : Array = []
