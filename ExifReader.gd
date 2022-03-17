@@ -8,7 +8,7 @@ const SIZE_LOOKUP = [1, 1, 2, 4, 8, 1, 1, 2, 4, 8]
 
 # Called when the node enters the scene tree for the first time.
 func _ready():
-	var files = get_files_recursive('//nas1/media/Picture Frame Pics/ON1')
+	var files = get_files_recursive('//nas1/media/Picture Frame Pics/ON1', 'jpg')
 	for file in files:
 		print('---------------------')
 		print(file)
@@ -17,16 +17,16 @@ func _ready():
 		var time2 = OS.get_system_time_msecs()
 		print("%s ms" % [time2 - time1])
 		pretty_print_exif(exif)
-		#break
+		break
 
 func get_exif_from_jpeg(jpeg_file: String) -> Dictionary:
 		var exif_section = _get_exif_buffer_from_jpeg(jpeg_file)
 		var result = {}
 		if exif_section.size() > 0:
-			var exif = _parse_exif_buffer(exif_section)
+			var exif_dicts = _parse_exif_buffer(exif_section)
 			# combine the separate dictionaries into a single, flat dictionary
-			for key in exif.keys():
-				merge_dict(result, exif[key])
+			for key in exif_dicts.keys():
+				merge_dict(result, exif_dicts[key])
 
 		return result
 
@@ -165,9 +165,10 @@ func convert_raw_gps_coord(degrees: float, minutes: float, seconds: float, direc
 			d *= -1
 		return d
 
-func get_files_recursive(scan_dir : String) -> Array:
+func get_files_recursive(scan_dir: String, extension: String = '*') -> Array:
 	var my_files : Array = []
 	var dir := Directory.new()
+	extension = extension.to_lower()
 	if dir.open(scan_dir) != OK:
 		printerr("Warning: could not open directory: ", scan_dir)
 		return []
@@ -176,12 +177,14 @@ func get_files_recursive(scan_dir : String) -> Array:
 		printerr("Warning: could not list contents of: ", scan_dir)
 		return []
 
-	var file_name := dir.get_next()
+	var file_name = dir.get_next()
 	while file_name != "":
+		var qualified_path = "%s/%s" % [dir.get_current_dir(), file_name]
 		if dir.current_is_dir():
-			my_files += get_files_recursive(dir.get_current_dir() + "/" + file_name)
+			my_files += get_files_recursive(qualified_path)
 		else:
-			my_files.append(dir.get_current_dir() + "/" + file_name)
+			if extension == '*' or file_name.get_extension().to_lower() == extension:
+				my_files.append(qualified_path)
 
 		file_name = dir.get_next()
 
