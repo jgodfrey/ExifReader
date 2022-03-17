@@ -15,16 +15,20 @@ func _ready():
 		var time1 = OS.get_system_time_msecs()
 		var exif = get_exif_from_jpeg(file)
 		var time2 = OS.get_system_time_msecs()
-		print("%d, %d, %d" % [time1, time2, time2 - time1])
+		print("%s ms" % [time2 - time1])
 		pretty_print_exif(exif)
 		#break
 
 func get_exif_from_jpeg(jpeg_file: String) -> Dictionary:
 		var exif_section = _get_exif_buffer_from_jpeg(jpeg_file)
-		var exif = {}
+		var result = {}
 		if exif_section.size() > 0:
-			exif = _parse_exif_buffer(exif_section)
-		return exif
+			var exif = _parse_exif_buffer(exif_section)
+			# combine the separate dictionaries into a single, flat dictionary
+			for key in exif.keys():
+				merge_dict(result, exif[key])
+
+		return result
 
 func _parse_exif_buffer(exif_section: PoolByteArray) -> Dictionary:
 	var results = {}
@@ -38,7 +42,6 @@ func _parse_exif_buffer(exif_section: PoolByteArray) -> Dictionary:
 	var signature = stream.get_u16()
 	var ifd_offset = stream.get_u32() # <-----
 	var ifd0 = _read_exif_tags(stream, tiff_header, ifd_offset, Globals.exif_tags)
-	print(ifd0)
 	results['image'] = ifd0
 
 	if ifd0.has('ExifOffset') && ifd0['ExifOffset'] > 0:
@@ -141,6 +144,10 @@ func _get_exif_buffer_from_jpeg(imageFile: String) -> PoolByteArray:
 			file.seek(file.get_position() + buf_len)
 
 	return exif_section
+
+static func merge_dict(target: Dictionary, patch: Dictionary) -> void:
+	for key in patch:
+		target[key] = patch[key]
 
 func pretty_print_exif(dict: Dictionary) -> void:
 		var keys = dict.keys()
