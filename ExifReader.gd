@@ -114,16 +114,12 @@ func _read_exif_value(stream: StreamPeerBuffer, type: int):
 		3: return stream.get_u16() # 16-bit unsigned int
 		4: return stream.get_u32() # 32-bit unsigned int
 		5: # rational = two unsigned long values, first is numerator, second is denominator
-			var num = stream.get_u32()
-			var den = stream.get_u32()
-			return _get_rational_value(num, den)
+			return _get_rational_value(stream.get_u32(), stream.get_u32())
 		6: return stream.get_8()
 		8: return stream.get_16()
 		9: return stream.get_32()
 		10: # rational = two signed long values, first is numerator, second is denominator
-			var num = stream.get_32()
-			var den = stream.get_32()
-			return _get_rational_value(num, den)
+			return _get_rational_value(stream.get_32(), stream.get_32())
 
 func _get_rational_value(numerator: int, denominator: int):
 	if denominator == 0:
