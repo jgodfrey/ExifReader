@@ -116,16 +116,20 @@ func _read_exif_value(stream: StreamPeerBuffer, type: int):
 		5: # rational = two unsigned long values, first is numerator, second is denominator
 			var num = stream.get_u32()
 			var den = stream.get_u32()
-			if den == 0: den = 1
-			return float(num) / den
+			return _get_rational_value(num, den)
 		6: return stream.get_8()
 		8: return stream.get_16()
 		9: return stream.get_32()
 		10: # rational = two signed long values, first is numerator, second is denominator
 			var num = stream.get_32()
 			var den = stream.get_32()
-			if den == 0: den = 1
-			return float(num) / den
+			return _get_rational_value(num, den)
+
+func _get_rational_value(numerator: int, denominator: int):
+	if denominator == 0:
+		return 'nan' if numerator == 0 else 'inf'
+	else:
+		return float(numerator) / denominator
 
 func _get_exif_buffer_from_jpeg(imageFile: String) -> PoolByteArray:
 	var exif_section = PoolByteArray([])
